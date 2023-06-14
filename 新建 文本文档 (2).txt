@@ -1,0 +1,424 @@
+
+// 三维变换View.cpp: C三维变换View 类的实现
+//
+
+#include "pch.h"
+#include "framework.h"
+#include "windows.h"
+#include <gl/gl.h>  // OpenGL头文件
+// SHARED_HANDLERS 可以在实现预览、缩略图和搜索筛选器句柄的
+// ATL 项目中进行定义，并允许与该项目共享文档代码。
+//#ifndef SHARED_HANDLERS
+#include "三维变换.h"
+//#endif
+
+#include "三维变换Doc.h"
+#include "三维变换View.h"
+#include "gltranslatef.h"
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#endif
+
+#define LEFT 1  //0001
+#define RIGHT 2  //0010
+#define BOTTOM 4  //0100
+#define TOP 8     //1000
+
+// C三维变换View
+
+IMPLEMENT_DYNCREATE(C三维变换View, CView)
+
+BEGIN_MESSAGE_MAP(C三维变换View, CView)
+	// 标准打印命令
+	ON_COMMAND(ID_FILE_PRINT, &CView::OnFilePrint)
+	ON_COMMAND(ID_FILE_PRINT_DIRECT, &CView::OnFilePrint)
+	ON_COMMAND(ID_FILE_PRINT_PREVIEW, &CView::OnFilePrintPreview)
+	ON_WM_CREATE()
+	ON_WM_DESTROY()
+	ON_WM_SIZE()
+	ON_COMMAND(ID_translate, &C三维变换View::Ontranslate)
+END_MESSAGE_MAP()
+
+// C三维变换View 构造/析构
+
+C三维变换View::C三维变换View() noexcept
+{
+	// TODO: 在此处添加构造代码
+	this->m_GLPixelIndex = 0;
+	this->m_hGLContext = NULL;
+	lightEnable = true;
+	textureEnable = true;
+	timeEnable = false;
+	rotateangle = 30.0f;
+	xangle = 0.0f;
+	yangle = 0.0f;
+	filter = 0;
+}
+
+C三维变换View::~C三维变换View()
+{
+}
+
+BOOL C三维变换View::PreCreateWindow(CREATESTRUCT& cs)
+{
+	// TODO: 在此处通过修改
+	//  CREATESTRUCT cs 来修改窗口类或样式
+	cs.style |= (WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+
+	return CView::PreCreateWindow(cs);
+}
+
+// C三维变换View 绘图
+
+void C三维变换View::OnDraw(CDC* pDC)
+{
+	C三维变换Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (!pDoc)
+		return;
+
+	// TODO: 在此处为本机数据添加绘制代码
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	//1、清除颜色缓冲和深度缓冲
+
+	//三维投影变换
+	
+	glMatrixMode(GL_PROJECTION);	//投影变换
+	glLoadIdentity(); //2、恢复初始坐标系
+	gluPerspective(30, aspect, 0.1f, 100.0f);		//设置相机、透视投影
+	
+	if (lightEnable)
+	{
+		glEnable(GL_LIGHTING);
+		GLfloat LightAmbient[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		GLfloat LightDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		GLfloat LightDiffuse0[] = { 1.0f, 0.0f, 1.0f, 1.0f };
+		GLfloat LightSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		GLfloat LightPosition[] = { 0.0f, 0.0f, 5.0f, 0.0f };
+		GLfloat LightPosition0[] = { 0.0f, 4.0f, 0.0f, 0.0f };
+
+		GLfloat mat_specular[] = { 1.0,0.0,0.0,1.0 };
+		GLfloat mat_shininess[] = { 12.0 };
+
+		glLightfv(GL_LIGHT1, GL_AMBIENT, LightAmbient);		// Setup The Ambient Light
+		glLightfv(GL_LIGHT1, GL_DIFFUSE, LightDiffuse);		// Setup The Diffuse Light
+		glLightfv(GL_LIGHT1, GL_SPECULAR, LightSpecular);	// Setup The Diffuse Light
+		glLightfv(GL_LIGHT1, GL_POSITION, LightPosition0);	// Position The Light
+		glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+		glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+
+		glEnable(GL_LIGHT1);
+
+		//glLightfv(GL_LIGHT0, GL_DIFFUSE, LightDiffuse0);	// Setup The Diffuse Light
+		//glLightfv(GL_LIGHT0, GL_POSITION, LightPosition0);	// Position The Light
+		//glEnable(GL_LIGHT0);
+	}
+	else
+	{
+		glDisable(GL_LIGHTING);
+	}
+
+	if (textureEnable)
+	{
+		glEnable(GL_TEXTURE_2D);							// Enable Texture Mapping
+		glBindTexture(GL_TEXTURE_2D, texture[filter]);
+		glEnable(GL_BLEND);  //打开混合
+	}
+	else
+	{
+		glDisable(GL_TEXTURE_2D);
+	}
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	gluLookAt(0, 0, 20, 0, 0, -1, 0, 1, 0);		//对相机的位置和角度进行变换，视点默认为原点，向z轴负向看
+	glTranslatef(0.0, 0.0, 10.0);
+
+	glRotatef(xangle + rotateangle, 1.0, 0.0, 0.0);
+	glRotatef(yangle + rotateangle, 0.0, 1.0, 0.0);
+
+	glShadeModel(GL_SMOOTH);	//GL_SMOOTH渐变色  GL_FLAT不渐变
+	/*glShadeModel(GL_FLAT);*/
+	glEnable(GL_DEPTH_TEST);						// Enables Depth Testing
+
+	//glDisable(GL_TEXTURE_2D);
+	//GLUquadricObj *qobj = gluNewQuadric();
+	//gluSphere(qobj,2,32,32);
+
+	drawCube();
+
+	glDisable(GL_BLEND);
+	glDisable(GL_LINE_SMOOTH);
+
+
+	glFlush();   //3、强制刷新缓冲，保证绘图命令将被执行，而不是存储在缓冲区中等待其他的OpenGL命令
+	SwapBuffers(wglGetCurrentDC());  // 交换缓冲区
+
+}
+
+
+// C三维变换View 打印
+
+BOOL C三维变换View::OnPreparePrinting(CPrintInfo* pInfo)
+{
+	// 默认准备
+	return DoPreparePrinting(pInfo);
+}
+
+void C三维变换View::OnBeginPrinting(CDC* /*pDC*/, CPrintInfo* /*pInfo*/)
+{
+	// TODO: 添加额外的打印前进行的初始化过程
+}
+
+void C三维变换View::OnEndPrinting(CDC* /*pDC*/, CPrintInfo* /*pInfo*/)
+{
+	// TODO: 添加打印后进行的清理过程
+}
+
+
+// C三维变换View 诊断
+
+#ifdef _DEBUG
+void C三维变换View::AssertValid() const
+{
+	CView::AssertValid();
+}
+
+void C三维变换View::Dump(CDumpContext& dc) const
+{
+	CView::Dump(dc);
+}
+
+C三维变换Doc* C三维变换View::GetDocument() const // 非调试版本是内联的
+{
+	ASSERT(m_pDocument->IsKindOf(RUNTIME_CLASS(C三维变换Doc)));
+	return (C三维变换Doc*)m_pDocument;
+}
+#endif //_DEBUG
+
+
+// C三维变换View 消息处理程序
+
+
+int C三维变换View::OnCreate(LPCREATESTRUCT lpCreateStruct)
+{
+	if (CView::OnCreate(lpCreateStruct) == -1)
+		return -1;
+
+	// TODO:  在此添加您专用的创建代码
+	HWND hWnd = this->GetSafeHwnd();
+	hDC = ::GetDC(hWnd);
+	if (this->SetWindowPixelFormat(hDC) == FALSE)
+	{
+		return 0;
+	}
+	if (this->CreateViewGLContext(hDC) == FALSE)
+	{
+		return 0;
+	}
+
+	return 0;
+}
+
+
+bool C三维变换View::SetWindowPixelFormat(HDC hDC)
+{
+	// TODO: 在此处添加实现代码.
+	PIXELFORMATDESCRIPTOR pixelDesc =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR),				// Size Of This Pixel Format Descriptor
+		1,											// Version Number
+		PFD_DRAW_TO_WINDOW |						// Format Must Support Window
+		PFD_SUPPORT_OPENGL |						// Format Must Support OpenGL
+		PFD_DOUBLEBUFFER,							// Must Support Double Buffering
+		PFD_TYPE_RGBA,								// Request An RGBA Format
+		32,										    // Select Our Color Depth
+		0, 0, 0, 0, 0, 0,							// Color Bits Ignored
+		0,											// No Alpha Buffer
+		0,											// Shift Bit Ignored
+		0,											// No Accumulation Buffer
+		0, 0, 0, 0,									// Accumulation Bits Ignored
+		16,											// 16Bit Z-Buffer (Depth Buffer)  
+		0,											// No Stencil Buffer
+		0,											// No Auxiliary Buffer
+		PFD_MAIN_PLANE,								// Main Drawing Layer
+		0,											// Reserved
+		0, 0, 0										// Layer Masks Ignored
+	};
+
+	this->m_GLPixelIndex = ChoosePixelFormat(hDC, &pixelDesc);
+	if (this->m_GLPixelIndex == 0)
+	{
+		this->m_GLPixelIndex = 1;
+		if (DescribePixelFormat(hDC, this->m_GLPixelIndex, sizeof(PIXELFORMATDESCRIPTOR), &pixelDesc) == 0)
+		{
+			return FALSE;
+		}
+	}
+
+	if (SetPixelFormat(hDC, this->m_GLPixelIndex, &pixelDesc) == FALSE)
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+
+bool C三维变换View::CreateViewGLContext(HDC hDC)
+{
+	// TODO: 在此处添加实现代码.
+	this->m_hGLContext = wglCreateContext(hDC);
+	if (this->m_hGLContext == NULL)
+	{//创建失败
+		return FALSE;
+	}
+
+	if (wglMakeCurrent(hDC, this->m_hGLContext) == FALSE)
+	{//选为当前RC失败
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+void C三维变换View::OnDestroy()
+{
+	CView::OnDestroy();
+
+	// TODO: 在此处添加消息处理程序代码
+	if (wglGetCurrentContext() != NULL)
+	{
+		wglMakeCurrent(NULL, NULL);
+	}
+	if (this->m_hGLContext != NULL)
+	{
+		wglDeleteContext(this->m_hGLContext);
+		this->m_hGLContext = NULL;
+	}
+}
+
+
+void C三维变换View::OnSize(UINT nType, int cx, int cy)
+{
+	CView::OnSize(nType, cx, cy);
+
+	// TODO: 在此处添加消息处理程序代码
+	GLsizei width, height;
+	width = cx;
+	height = cy;
+	if (cy == 0)
+	{
+		aspect = (GLdouble)width;
+	}
+	else
+	{
+		aspect = (GLdouble)width / (GLdouble)height;
+	}
+	glViewport(0, 0, width, height);   //设置视区
+	//视区：将窗口映射到显示设备（设备坐标系）上的坐标区域
+
+	glMatrixMode(GL_MODELVIEW);		// Select The Modelview Matrix
+	glLoadIdentity();
+}
+
+
+void C三维变换View::drawCube()
+{
+	// TODO: 在此处添加实现代码.
+	glBegin(GL_QUADS);
+	// Front Face
+	glColor3f(1.0f, 1.0f, 0.0f);
+	glNormal3f(0.0f, 0.0f, 1.0f);//法向量
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f, -1.0f, 1.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(1.0f, -1.0f, 1.0f);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(1.0f, 1.0f, 1.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, 1.0f, 1.0f);
+	// Back Face
+	glNormal3f(0.0f, 0.0f, -1.0f);//法向量
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f, -1.0f, -1.0f);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f, 1.0f, -1.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(1.0f, 1.0f, -1.0f);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(1.0f, -1.0f, -1.0f);
+	// Top Face
+	glNormal3f(0.0f, 1.0f, 0.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, 1.0f, -1.0f);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f, 1.0f, 1.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(1.0f, 1.0f, 1.0f);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(1.0f, 1.0f, -1.0f);
+	// Bottom Face
+	glNormal3f(0.0f, -1.0f, 0.0f);//法向量
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f, -1.0f, -1.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(1.0f, -1.0f, -1.0f);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(1.0f, -1.0f, 1.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f, -1.0f, 1.0f);
+	// Right face
+	glNormal3f(1.0f, 0.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(1.0f, -1.0f, -1.0f);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(1.0f, 1.0f, -1.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(1.0f, 1.0f, 1.0f);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(1.0f, -1.0f, 1.0f);
+	// Left Face
+	glNormal3f(-1.0f, 0.0f, 0.0f);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f, -1.0f, -1.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f, -1.0f, 1.0f);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f, 1.0f, 1.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, 1.0f, -1.0f);
+	glEnd();
+
+
+	glBegin(GL_LINES);
+	// Front Face
+	glColor3f(1.0f, 0.0f, 0.0f);
+	glVertex3f(-1.0f, -1.0f, 1.0f);
+	glVertex3f(1.0f, -1.0f, 1.0f);
+	glVertex3f(1.0f, 1.0f, 1.0f);
+	glVertex3f(-1.0f, 1.0f, 1.0f);
+	glVertex3f(-1.0f, -1.0f, 1.0f);
+	// Back Face
+	glVertex3f(-1.0f, -1.0f, -1.0f);
+	glVertex3f(-1.0f, 1.0f, -1.0f);
+	glVertex3f(1.0f, 1.0f, -1.0f);
+	glVertex3f(1.0f, -1.0f, -1.0f);
+	glVertex3f(-1.0f, -1.0f, -1.0f);
+	// Top Face
+	glVertex3f(-1.0f, 1.0f, -1.0f);
+	glVertex3f(-1.0f, 1.0f, 1.0f);
+	glVertex3f(1.0f, 1.0f, 1.0f);
+	glVertex3f(1.0f, 1.0f, -1.0f);
+	glVertex3f(-1.0f, 1.0f, -1.0f);
+	// Bottom Face
+	glVertex3f(-1.0f, -1.0f, -1.0f);
+	glVertex3f(1.0f, -1.0f, -1.0f);
+	glVertex3f(1.0f, -1.0f, 1.0f);
+	glVertex3f(-1.0f, -1.0f, 1.0f);
+	glVertex3f(-1.0f, -1.0f, -1.0f);
+	// Right face
+	glVertex3f(1.0f, -1.0f, -1.0f);
+	glVertex3f(1.0f, 1.0f, -1.0f);
+	glVertex3f(1.0f, 1.0f, 1.0f);
+	glVertex3f(1.0f, -1.0f, 1.0f);
+	glVertex3f(1.0f, -1.0f, -1.0f);
+	// Left Face
+	glVertex3f(-1.0f, -1.0f, -1.0f);
+	glVertex3f(-1.0f, -1.0f, 1.0f);
+	glVertex3f(-1.0f, 1.0f, 1.0f);
+	glVertex3f(-1.0f, 1.0f, -1.0f);
+	glVertex3f(-1.0f, -1.0f, -1.0f);
+	glEnd();
+}
+
+
+void C三维变换View::Ontranslate()
+{
+	// TODO: 在此添加命令处理程序代码
+	gltranslatef dialogline;
+	if (dialogline.DoModal() == IDOK)
+	{
+		glLoadIdentity();
+		glTranslatef(dialogline.m_x1, dialogline.m_y1, dialogline.m_z1);	//平移变换
+		drawCube();
+		glFlush();
+	}
+	SwapBuffers(wglGetCurrentDC());
+}
